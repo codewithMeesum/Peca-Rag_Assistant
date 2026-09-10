@@ -2,7 +2,9 @@
 import hashlib
 import os
 import re
+from io import BytesIO
 from typing import Dict, List, Tuple
+from urllib.request import Request, urlopen
 
 import numpy as np
 import streamlit as st
@@ -12,51 +14,73 @@ from sentence_transformers import SentenceTransformer
 
 
 # ============================================================
-# CONFIG
+# APP CONFIG
 # ============================================================
 
 st.set_page_config(
-    page_title="PECA Legal Assistant",
+    page_title="PECA Legal Information Assistant",
     page_icon="🇵🇰",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-EMBEDDING_MODEL = "all-MiniLM-L6-v2"
-LLM_MODEL = "openai/gpt-oss-120b"
+APP_TITLE = "PECA Legal Information Assistant"
+APP_TAGLINE = (
+    "Ask questions about Pakistan's Prevention of Electronic Crimes Act, "
+    "2016 — grounded in the source document."
+)
+
+# GitHub repository supplied for the project PDF.
+PDF_BLOB_URL = (
+    "https://github.com/codewithMeesum/Peca-Rag_Assistant/blob/main/"
+    "PECA%202026.pdf"
+)
+PDF_RAW_URL = (
+    "https://raw.githubusercontent.com/codewithMeesum/"
+    "Peca-Rag_Assistant/main/PECA%202026.pdf"
+)
+
+EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
+LLM_MODEL_NAME = "openai/gpt-oss-120b"
 
 CHUNK_SIZE = 1200
 CHUNK_OVERLAP = 180
-TOP_K = 5
-MIN_RELEVANCE = 0.18
+TOP_K = 6
 
 
 # ============================================================
-# PREMIUM UI
+# STYLE
 # ============================================================
 
 st.markdown(
     """
     <style>
-    /* Global */
     .stApp {
         background:
-            radial-gradient(circle at 15% 0%, rgba(16,185,129,.06), transparent 30%),
-            radial-gradient(circle at 90% 10%, rgba(59,130,246,.05), transparent 28%),
-            #f7f8fa;
+            radial-gradient(
+                circle at 15% 0%,
+                rgba(16,185,129,.07),
+                transparent 30%
+            ),
+            radial-gradient(
+                circle at 90% 5%,
+                rgba(59,130,246,.05),
+                transparent 28%
+            ),
+            #f8fafc;
     }
 
     [data-testid="stHeader"] {
-        background: rgba(247,248,250,.90);
+        background: rgba(248,250,252,.88);
     }
 
     [data-testid="stSidebar"] {
-        background: #111827;
-        border-right: 1px solid #1f2937;
+        background: #0f172a;
+        border-right: 1px solid #1e293b;
     }
 
     [data-testid="stSidebar"] * {
-        color: #e5e7eb;
+        color: #e2e8f0;
     }
 
     .block-container {
@@ -65,220 +89,156 @@ st.markdown(
         padding-bottom: 3rem;
     }
 
-    /* Hero */
-    .brand-row {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        margin-bottom: 6px;
-    }
-
-    .brand-mark {
-        width: 42px;
-        height: 42px;
-        border-radius: 12px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: linear-gradient(135deg, #065f46, #10b981);
-        color: white;
-        font-size: 22px;
-        box-shadow: 0 8px 22px rgba(5,150,105,.20);
-    }
-
     .eyebrow {
         color: #059669;
-        font-size: .74rem;
+        font-size: .72rem;
         font-weight: 800;
         letter-spacing: .12em;
         text-transform: uppercase;
+        margin-bottom: 5px;
     }
 
     .hero-title {
+        color: #0f172a;
         font-size: 2.55rem;
-        line-height: 1.08;
         font-weight: 800;
-        color: #111827;
+        line-height: 1.08;
+        letter-spacing: -.035em;
         margin: 0;
     }
 
     .hero-subtitle {
-        color: #6b7280;
+        color: #64748b;
         font-size: 1rem;
-        line-height: 1.55;
-        margin-top: 8px;
-        max-width: 780px;
+        line-height: 1.6;
+        max-width: 820px;
+        margin-top: 9px;
     }
 
-    .status-pill {
+    .pill {
         display: inline-flex;
         align-items: center;
         gap: 7px;
-        margin-top: 14px;
-        padding: 7px 11px;
-        border-radius: 999px;
+        margin-top: 13px;
+        border: 1px solid #a7f3d0;
         background: #ecfdf5;
         color: #047857;
-        border: 1px solid #a7f3d0;
-        font-size: .78rem;
-        font-weight: 700;
+        border-radius: 999px;
+        padding: 7px 11px;
+        font-size: .76rem;
+        font-weight: 750;
     }
 
-    .status-dot {
+    .dot {
         width: 7px;
         height: 7px;
         border-radius: 50%;
         background: #10b981;
     }
 
-    /* Cards */
     .panel {
-        background: white;
-        border: 1px solid #e5e7eb;
+        background: rgba(255,255,255,.94);
+        border: 1px solid #e2e8f0;
         border-radius: 16px;
-        box-shadow: 0 10px 30px rgba(17,24,39,.04);
+        box-shadow: 0 12px 32px rgba(15,23,42,.045);
     }
 
-    .stat-card {
+    .stat {
+        min-height: 104px;
         padding: 16px 18px;
-        min-height: 92px;
     }
 
     .stat-label {
-        color: #6b7280;
-        font-size: .78rem;
-        font-weight: 700;
+        color: #64748b;
+        font-size: .72rem;
+        font-weight: 800;
+        letter-spacing: .07em;
         text-transform: uppercase;
-        letter-spacing: .06em;
     }
 
     .stat-value {
-        margin-top: 7px;
-        color: #111827;
-        font-size: 1.45rem;
+        color: #0f172a;
+        margin-top: 6px;
+        font-size: 1.42rem;
         font-weight: 800;
+        line-height: 1.2;
     }
 
-    .stat-sub {
-        color: #9ca3af;
-        font-size: .74rem;
-        margin-top: 3px;
+    .stat-note {
+        color: #94a3b8;
+        margin-top: 4px;
+        font-size: .73rem;
     }
 
-    .section-title {
-        color: #111827;
-        font-size: 1.04rem;
-        font-weight: 800;
-        margin-bottom: 2px;
+    .grounding {
+        border: 1px solid #bbf7d0;
+        background: #f0fdf4;
+        color: #166534;
+        border-radius: 12px;
+        padding: 12px 14px;
+        font-size: .82rem;
+        line-height: 1.55;
     }
 
-    .section-caption {
-        color: #6b7280;
-        font-size: .84rem;
-        margin-bottom: 10px;
+    .legal-note {
+        border: 1px solid #fde68a;
+        background: #fffbeb;
+        color: #92400e;
+        border-radius: 12px;
+        padding: 12px 14px;
+        font-size: .8rem;
+        line-height: 1.55;
     }
 
-    /* Chat */
-    [data-testid="stChatMessage"] {
-        background: transparent;
-        border: none;
-        padding: 8px 0;
-    }
-
-    [data-testid="stChatMessageContent"] {
-        border-radius: 15px;
-        padding: 14px 16px;
-    }
-
-    [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"])
-    [data-testid="stChatMessageContent"] {
-        background: #111827;
-        color: white;
-        border-bottom-right-radius: 5px;
-    }
-
-    [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"])
-    [data-testid="stChatMessageContent"] {
-        background: white;
-        border: 1px solid #e5e7eb;
-        box-shadow: 0 7px 22px rgba(17,24,39,.035);
-        border-bottom-left-radius: 5px;
-    }
-
-    /* Source cards */
     .source-card {
-        background: #fafafa;
-        border: 1px solid #e5e7eb;
-        border-radius: 14px;
+        border: 1px solid #e2e8f0;
+        background: #ffffff;
+        border-radius: 13px;
         padding: 14px 15px;
-        margin: 8px 0;
+        margin: 7px 0;
     }
 
     .source-meta {
-        color: #6b7280;
-        font-size: .76rem;
+        color: #64748b;
+        font-size: .75rem;
         margin-bottom: 8px;
     }
 
     .source-meta strong {
-        color: #374151;
+        color: #334155;
     }
 
     .source-text {
-        color: #374151;
+        color: #334155;
         font-size: .84rem;
-        line-height: 1.58;
+        line-height: 1.62;
     }
 
-    .relevance {
-        float: right;
-        color: #047857;
-        font-weight: 700;
-    }
-
-    .grounded-note {
-        border: 1px solid #d1fae5;
-        background: #f0fdf4;
-        border-radius: 12px;
-        padding: 11px 13px;
-        color: #065f46;
-        font-size: .82rem;
-    }
-
-    .warning-note {
-        border: 1px solid #fde68a;
-        background: #fffbeb;
-        border-radius: 12px;
-        padding: 11px 13px;
-        color: #92400e;
-        font-size: .82rem;
-    }
-
-    .footer {
-        color: #9ca3af;
-        text-align: center;
-        font-size: .75rem;
-        padding-top: 18px;
-    }
-
-    /* Sidebar */
-    .side-brand {
-        font-size: 1.05rem;
+    .side-title {
+        color: #f8fafc;
+        font-size: 1.03rem;
         font-weight: 800;
-        margin-bottom: 2px;
+        margin-bottom: 4px;
     }
 
-    .side-muted {
-        color: #9ca3af;
+    .side-text {
+        color: #94a3b8;
         font-size: .78rem;
         line-height: 1.55;
     }
 
-    /* Streamlit controls */
+    .footer {
+        color: #94a3b8;
+        text-align: center;
+        font-size: .74rem;
+        padding-top: 20px;
+        line-height: 1.55;
+    }
+
     .stButton > button {
         border-radius: 10px;
-        border: 1px solid #d1d5db;
-        font-weight: 600;
+        font-weight: 650;
+        border-color: #dbe3ed;
     }
 
     .stButton > button:hover {
@@ -286,11 +246,11 @@ st.markdown(
         color: #047857;
     }
 
-    [data-testid="stFileUploader"] {
-        border-radius: 12px;
+    [data-testid="stChatMessageContent"] {
+        border-radius: 15px;
     }
 
-    @media (max-width: 900px) {
+    @media (max-width: 850px) {
         .hero-title {
             font-size: 2rem;
         }
@@ -302,19 +262,48 @@ st.markdown(
 
 
 # ============================================================
-# HELPERS
+# API KEY
 # ============================================================
 
-def get_groq_api_key() -> str:
-    """Read the Groq API key from Streamlit Secrets or environment."""
+def get_api_key() -> str:
     try:
-        secret = st.secrets.get("GROQ_API_KEY")
-        if secret:
-            return str(secret).strip()
+        value = st.secrets.get("GROQ_API_KEY")
+        if value:
+            return str(value).strip()
     except Exception:
         pass
 
     return os.getenv("GROQ_API_KEY", "").strip()
+
+
+API_KEY = get_api_key()
+
+
+# ============================================================
+# PDF LOADING
+# ============================================================
+
+@st.cache_data(show_spinner=False)
+def download_default_pdf() -> bytes:
+    """Download the project's default PECA PDF from GitHub."""
+    request = Request(
+        PDF_RAW_URL,
+        headers={"User-Agent": "PECA-RAG-Assistant/1.0"},
+    )
+
+    with urlopen(request, timeout=30) as response:
+        data = response.read()
+
+    if not data.startswith(b"%PDF"):
+        raise ValueError(
+            "The configured GitHub source did not return a valid PDF."
+        )
+
+    return data
+
+
+def pdf_hash(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
 
 
 def normalize_text(text: str) -> str:
@@ -325,80 +314,151 @@ def normalize_text(text: str) -> str:
     return text.strip()
 
 
-def detect_section(text: str) -> str:
-    patterns = [
-        r"\bSection\s+([0-9]+[A-Za-z]?(?:\([^)]+\))?)",
-        r"\bSECTION\s+([0-9]+[A-Za-z]?(?:\([^)]+\))?)",
-        r"\bSec\.\s*([0-9]+[A-Za-z]?(?:\([^)]+\))?)",
-    ]
+def extract_pages(pdf_bytes: bytes) -> List[Dict]:
+    reader = PdfReader(BytesIO(pdf_bytes))
 
-    for pattern in patterns:
-        match = re.search(pattern, text)
-        if match:
-            return f"Section {match.group(1)}"
-
-    return "Section not detected"
-
-
-def extract_pages(pdf_file) -> List[Dict]:
-    reader = PdfReader(pdf_file)
     pages = []
 
     for page_number, page in enumerate(reader.pages, start=1):
         text = normalize_text(page.extract_text() or "")
 
         if text:
-            pages.append({
-                "page": page_number,
-                "text": text,
-            })
+            pages.append(
+                {
+                    "page": page_number,
+                    "text": text,
+                }
+            )
 
     return pages
 
 
-def chunk_page(text: str) -> List[str]:
-    if not text:
-        return []
+# ============================================================
+# SECTION DETECTION
+# ============================================================
 
+def find_section_markers(text: str) -> List[Tuple[int, str]]:
+    """
+    Detect common legal-section heading patterns.
+
+    This is intentionally conservative: section metadata is a best-effort
+    label while page number and source text remain the primary evidence.
+    """
+    markers = []
+
+    patterns = [
+        re.compile(
+            r"(?im)^\s*(section\s+"
+            r"\d+[A-Za-z]?(?:\([^)]+\))?)[\.:]?\s*(.*)$"
+        ),
+        re.compile(
+            r"(?im)^\s*(\d+[A-Za-z]?(?:\([^)]+\))?)\.\s+"
+            r"([A-Z][^\n]{2,120})$"
+        ),
+    ]
+
+    for pattern in patterns:
+        for match in pattern.finditer(text):
+            number = match.group(1).strip()
+            title = match.group(2).strip()
+
+            if number.lower().startswith("section"):
+                label = f"{number}"
+            else:
+                label = f"Section {number}"
+
+            if title:
+                label = f"{label} — {title}"
+
+            markers.append((match.start(), label))
+
+    markers.sort(key=lambda item: item[0])
+
+    # Remove near-duplicate markers.
+    clean = []
+    for position, label in markers:
+        if clean and position - clean[-1][0] < 10:
+            continue
+        clean.append((position, label))
+
+    return clean
+
+
+def section_for_position(
+    markers: List[Tuple[int, str]],
+    position: int,
+) -> str:
+    current = "Section not detected"
+
+    for marker_position, label in markers:
+        if marker_position > position:
+            break
+        current = label
+
+    return current
+
+
+# ============================================================
+# CHUNKING
+# ============================================================
+
+def split_text(text: str) -> List[Tuple[int, int, str]]:
+    """
+    Return character positions plus text so section metadata can be
+    preserved as the chunk is created.
+    """
     if len(text) <= CHUNK_SIZE:
-        return [text]
+        return [(0, len(text), text)]
 
     chunks = []
     start = 0
 
     while start < len(text):
         target_end = min(start + CHUNK_SIZE, len(text))
+        end = target_end
 
         if target_end < len(text):
-            # Prefer a natural boundary near the target end.
-            boundary_window = text[max(start, target_end - 160):target_end]
+            window_start = max(start, target_end - 180)
+            window = text[window_start:target_end]
+
             boundaries = [
-                boundary_window.rfind("\n\n"),
-                boundary_window.rfind(". "),
-                boundary_window.rfind("; "),
-                boundary_window.rfind(" "),
+                window.rfind("\n\n"),
+                window.rfind(". "),
+                window.rfind("; "),
+                window.rfind(" "),
             ]
 
             best = max(boundaries)
 
-            if best >= 0:
-                target_end = max(
-                    start + 1,
-                    target_end - 160 + best + 1
-                )
+            if best >= 20:
+                end = window_start + best + 1
 
-        chunk = text[start:target_end].strip()
+        chunk = text[start:end].strip()
 
         if chunk:
-            chunks.append(chunk)
+            actual_start = text.find(
+                chunk,
+                start,
+                min(len(text), end + 20),
+            )
 
-        if target_end >= len(text):
+            if actual_start < 0:
+                actual_start = start
+
+            actual_end = actual_start + len(chunk)
+
+            chunks.append(
+                (
+                    actual_start,
+                    actual_end,
+                    chunk,
+                )
+            )
+
+        if end >= len(text):
             break
 
-        start = max(
-            target_end - CHUNK_OVERLAP,
-            start + 1,
-        )
+        start = max(end - CHUNK_OVERLAP, start + 1)
 
     return chunks
 
@@ -407,67 +467,116 @@ def build_chunks(pages: List[Dict]) -> List[Dict]:
     chunks = []
 
     for page in pages:
-        for part_index, text in enumerate(
-            chunk_page(page["text"]),
+        page_text = page["text"]
+        markers = find_section_markers(page_text)
+
+        for chunk_index, (start, end, text) in enumerate(
+            split_text(page_text),
             start=1,
         ):
-            chunks.append({
-                "id": len(chunks),
-                "page": page["page"],
-                "chunk_on_page": part_index,
-                "section": detect_section(text),
-                "text": text,
-            })
+            chunks.append(
+                {
+                    "id": len(chunks),
+                    "page": page["page"],
+                    "chunk_on_page": chunk_index,
+                    "section": section_for_position(
+                        markers,
+                        start,
+                    ),
+                    "text": text,
+                }
+            )
 
     return chunks
 
 
-@st.cache_resource(show_spinner=False)
+# ============================================================
+# EMBEDDINGS
+# ============================================================
+
+@st.cache_resource(show_spinner="Loading embedding model...")
 def load_embedding_model() -> SentenceTransformer:
-    return SentenceTransformer(EMBEDDING_MODEL)
+    return SentenceTransformer(EMBEDDING_MODEL_NAME)
 
 
 @st.cache_data(show_spinner=False)
-def embed_texts(texts: Tuple[str, ...]) -> np.ndarray:
+def embed_chunks(texts: Tuple[str, ...]) -> np.ndarray:
     model = load_embedding_model()
 
-    vectors = model.encode(
+    embeddings = model.encode(
         list(texts),
         convert_to_numpy=True,
         show_progress_bar=False,
     ).astype("float32")
 
-    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+    norms = np.linalg.norm(
+        embeddings,
+        axis=1,
+        keepdims=True,
+    )
 
-    return vectors / np.maximum(norms, 1e-12)
+    return embeddings / np.maximum(norms, 1e-12)
 
 
-def word_set(text: str) -> set:
-    stop_words = {
+# ============================================================
+# RETRIEVAL
+# ============================================================
+
+def lexical_tokens(text: str) -> set:
+    stopwords = {
         "the", "a", "an", "and", "or", "of", "to", "in", "on", "for",
         "is", "are", "was", "were", "what", "who", "how", "does", "do",
-        "can", "this", "that", "with", "from", "about", "under", "by",
-        "which", "where", "when", "why",
+        "can", "this", "that", "with", "from", "about", "which", "where",
+        "when", "why", "tell", "me", "please",
     }
 
-    words = re.findall(r"[a-zA-Z0-9]{3,}", text.lower())
-    return {word for word in words if word not in stop_words}
+    tokens = re.findall(r"[a-zA-Z0-9]{3,}", text.lower())
+
+    return {
+        token
+        for token in tokens
+        if token not in stopwords
+    }
 
 
 def lexical_score(question: str, text: str) -> float:
-    q = word_set(question)
-    t = word_set(text)
+    question_tokens = lexical_tokens(question)
+    text_tokens = lexical_tokens(text)
 
-    if not q:
+    if not question_tokens:
         return 0.0
 
+    overlap = question_tokens.intersection(text_tokens)
+
     return min(
-        len(q.intersection(t)) / len(q),
+        len(overlap) / len(question_tokens),
         1.0,
     )
 
 
-def retrieve(
+def section_query_boost(question: str, chunk: Dict) -> float:
+    """
+    Give a small boost when a user explicitly asks about a section
+    number present in the retrieved chunk.
+    """
+    matches = re.findall(
+        r"\b(?:section|sec\.?)\s*(\d+[A-Za-z]?)",
+        question.lower(),
+    )
+
+    if not matches:
+        return 0.0
+
+    section_text = chunk["section"].lower()
+
+    for number in matches:
+        if number in section_text:
+            return 1.0
+
+    return 0.0
+
+
+def retrieve_chunks(
     question: str,
     chunks: List[Dict],
     embeddings: np.ndarray,
@@ -476,23 +585,26 @@ def retrieve(
 
     model = load_embedding_model()
 
-    query_vector = model.encode(
+    query_embedding = model.encode(
         [question],
         convert_to_numpy=True,
         show_progress_bar=False,
     ).astype("float32")
 
-    norm = np.linalg.norm(
-        query_vector,
+    query_norm = np.linalg.norm(
+        query_embedding,
         axis=1,
         keepdims=True,
     )
 
-    query_vector = query_vector / np.maximum(norm, 1e-12)
+    query_embedding = (
+        query_embedding
+        / np.maximum(query_norm, 1e-12)
+    )
 
     semantic_scores = np.dot(
         embeddings,
-        query_vector[0],
+        query_embedding[0],
     )
 
     results = []
@@ -503,10 +615,15 @@ def retrieve(
             chunk["text"],
         )
 
-        # Semantic similarity remains primary.
+        section_boost = section_query_boost(
+            question,
+            chunk,
+        )
+
         combined = (
-            0.85 * float(semantic_scores[index])
+            0.82 * float(semantic_scores[index])
             + 0.15 * lexical
+            + 0.03 * section_boost
         )
 
         item = dict(chunk)
@@ -521,21 +638,43 @@ def retrieve(
         reverse=True,
     )
 
-    return results[:top_k]
+    # Light diversity: avoid returning many chunks from the same page
+    # when other highly relevant pages are available.
+    selected = []
+    page_counts = {}
 
+    for item in results:
+        page = item["page"]
+        page_count = page_counts.get(page, 0)
+
+        if page_count >= 2 and len(selected) < top_k - 1:
+            continue
+
+        selected.append(item)
+        page_counts[page] = page_count + 1
+
+        if len(selected) >= top_k:
+            break
+
+    return selected
+
+
+# ============================================================
+# GROQ ANSWERING
+# ============================================================
 
 def build_context(sources: List[Dict]) -> str:
     blocks = []
 
-    for item in sources:
+    for source in sources:
         blocks.append(
             f"""
-SOURCE_ID: {item["id"]}
-PAGE: {item["page"]}
-SECTION: {item["section"]}
+SOURCE {source["id"]}
+PAGE: {source["page"]}
+SECTION: {source["section"]}
 
-SOURCE_TEXT:
-{item["text"]}
+TEXT:
+{source["text"]}
 """.strip()
         )
 
@@ -550,76 +689,82 @@ def build_grounded_prompt(
 
     context = build_context(sources)
 
-    recent_history = history[-6:]
-    history_lines = []
+    previous = []
 
-    for message in recent_history:
-        role = message.get("role", "")
-        content = message.get("content", "")
+    for message in history[-6:]:
+        role = message.get("role")
+        content = message.get("content")
 
         if role in {"user", "assistant"} and content:
-            history_lines.append(
+            previous.append(
                 f"{role.upper()}: {content}"
             )
 
-    history_text = "\n".join(history_lines)
+    history_text = (
+        "\n".join(previous)
+        if previous
+        else "(No previous conversation.)"
+    )
 
     return f"""
-You are the PECA Legal Information Assistant.
+You are a careful document-grounded information assistant for the
+Prevention of Electronic Crimes Act, 2016 (PECA).
 
 SOURCE OF TRUTH:
-Only the retrieved passages from the uploaded Prevention of Electronic
-Crimes Act, 2016 document are authoritative for this answer.
+Use ONLY the retrieved passages provided below.
 
 STRICT RULES:
-1. Use only the supplied source context.
-2. Do not invent legal sections, penalties, procedures, authorities,
-   dates, exceptions, or interpretations.
-3. If the supplied context does not support the answer, respond exactly:
-   "I couldn't find enough relevant information in the uploaded document
-   to answer that reliably."
-4. Explain the document in simple language while preserving its meaning.
-5. When supported, cite the page and section naturally, e.g.
-   "[Section 21, Page 24]".
-6. Never fabricate citations.
-7. Do not provide personal legal advice.
-8. For punishment or legal consequences, state what the document says
-   without adding outside legal conclusions.
-9. Keep the answer concise and useful.
+- Do not invent or guess legal provisions.
+- Do not add outside laws, amendments, penalties, dates, procedures,
+  or interpretations unless they are explicitly supported by the
+  retrieved source text.
+- If the retrieved passages do not contain enough information, say:
+  "I couldn't find enough relevant information in the uploaded document
+  to answer that reliably."
+- Explain the source in plain, understandable language.
+- Preserve the legal meaning of the source.
+- When possible, cite the supporting page and section like:
+  [Section 21, Page 24].
+- Never fabricate a section number or page number.
+- Do not present the response as professional legal advice.
+- For questions about punishments or consequences, clearly state that
+  the answer reflects what the document says.
+- Be concise unless the user asks for detail.
 
 RECENT CONVERSATION:
-{history_text if history_text else "(none)"}
+{history_text}
 
 RETRIEVED DOCUMENT CONTEXT:
 {context}
 
 USER QUESTION:
 {question}
+
+Answer only from the retrieved document context.
 """.strip()
 
 
-def answer_question(
+def generate_answer(
     question: str,
     sources: List[Dict],
     history: List[Dict],
-    api_key: str,
 ) -> str:
 
-    if not api_key:
+    if not API_KEY:
         raise RuntimeError(
-            "GROQ_API_KEY is not configured in Streamlit Secrets."
+            "GROQ_API_KEY is missing. Add it in Streamlit Secrets."
         )
 
-    client = Groq(api_key=api_key)
+    client = Groq(api_key=API_KEY)
 
     response = client.chat.completions.create(
-        model=LLM_MODEL,
+        model=LLM_MODEL_NAME,
         messages=[
             {
                 "role": "system",
                 "content": (
-                    "You are a careful, document-grounded assistant. "
-                    "Never add unsupported legal information."
+                    "You are a precise document-grounded assistant. "
+                    "Do not add unsupported legal information."
                 ),
             },
             {
@@ -635,50 +780,55 @@ def answer_question(
         max_completion_tokens=900,
     )
 
-    content = response.choices[0].message.content
+    answer = response.choices[0].message.content
 
-    if not content:
+    if not answer:
         raise RuntimeError(
             "The model returned an empty response."
         )
 
-    return content.strip()
+    return answer.strip()
 
 
-def document_hash(uploaded_file) -> str:
-    return hashlib.sha256(
-        uploaded_file.getvalue()
-    ).hexdigest()
-
+# ============================================================
+# STATE
+# ============================================================
 
 def clear_document_state() -> None:
     for key in [
-        "document_hash",
-        "document_name",
+        "doc_hash",
+        "doc_name",
+        "doc_source",
+        "pdf_bytes",
         "pages",
         "chunks",
         "embeddings",
         "messages",
         "latest_sources",
-        "latest_answer",
+        "pending_question",
     ]:
         st.session_state.pop(key, None)
 
 
-def index_document(uploaded_file) -> None:
-    current_hash = document_hash(uploaded_file)
+def prepare_document(
+    pdf_bytes: bytes,
+    name: str,
+    source: str,
+) -> None:
 
-    if st.session_state.get("document_hash") == current_hash:
+    current_hash = pdf_hash(pdf_bytes)
+
+    if st.session_state.get("doc_hash") == current_hash:
         return
 
     clear_document_state()
 
-    with st.spinner("Indexing document..."):
-        pages = extract_pages(uploaded_file)
+    with st.spinner("Preparing the PECA document for search..."):
+        pages = extract_pages(pdf_bytes)
 
         if not pages:
             raise ValueError(
-                "No readable text was found in the PDF. "
+                "No readable text was extracted from this PDF. "
                 "A scanned PDF may require OCR."
             )
 
@@ -686,28 +836,22 @@ def index_document(uploaded_file) -> None:
 
         if not chunks:
             raise ValueError(
-                "No searchable text chunks were created."
+                "No searchable chunks were created."
             )
 
-        embeddings = embed_texts(
+        embeddings = embed_chunks(
             tuple(chunk["text"] for chunk in chunks)
         )
 
-    st.session_state.document_hash = current_hash
-    st.session_state.document_name = uploaded_file.name
+    st.session_state.doc_hash = current_hash
+    st.session_state.doc_name = name
+    st.session_state.doc_source = source
+    st.session_state.pdf_bytes = pdf_bytes
     st.session_state.pages = pages
     st.session_state.chunks = chunks
     st.session_state.embeddings = embeddings
     st.session_state.messages = []
     st.session_state.latest_sources = []
-    st.session_state.latest_answer = ""
-
-
-# ============================================================
-# API KEY
-# ============================================================
-
-API_KEY = get_groq_api_key()
 
 
 # ============================================================
@@ -716,14 +860,14 @@ API_KEY = get_groq_api_key()
 
 with st.sidebar:
     st.markdown(
-        '<div class="side-brand">🇵🇰 PECA Assistant</div>',
+        '<div class="side-title">🇵🇰 PECA Assistant</div>',
         unsafe_allow_html=True,
     )
 
     st.markdown(
-        '<div class="side-muted">'
-        "Document-grounded Q&amp;A for Pakistan's "
-        "Prevention of Electronic Crimes Act, 2016."
+        '<div class="side-text">'
+        "A focused RAG assistant for the Prevention of Electronic "
+        "Crimes Act, 2016."
         "</div>",
         unsafe_allow_html=True,
     )
@@ -733,33 +877,81 @@ with st.sidebar:
     if API_KEY:
         st.success("Groq connected")
     else:
-        st.error("Groq key missing")
+        st.error("Groq API key missing")
 
     st.markdown("---")
 
-    st.markdown("**Document**")
+    st.markdown("**Source document**")
 
-    uploaded_pdf = st.file_uploader(
-        "Upload the official PECA PDF",
-        type=["pdf"],
+    use_default = st.radio(
+        "Document mode",
+        [
+            "Official PECA document",
+            "Upload another PDF",
+        ],
         label_visibility="collapsed",
     )
 
-    st.caption(
-        "Your PDF is processed for the current app session."
-    )
+    uploaded_pdf = None
+
+    if use_default == "Official PECA document":
+        st.markdown(
+            '<div class="side-text">'
+            "The project loads its PECA PDF automatically, so visitors "
+            "do not need to download and upload it manually."
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+        st.markdown(
+            f'[📥 Download source PDF]({PDF_BLOB_URL})'
+        )
+
+        try:
+            default_bytes = download_default_pdf()
+            prepare_document(
+                default_bytes,
+                "PECA 2026.pdf",
+                PDF_BLOB_URL,
+            )
+        except Exception as exc:
+            st.error(
+                "The default PECA PDF could not be loaded automatically."
+            )
+            st.caption(
+                "You can use the upload mode below or open the source PDF "
+                "from the project repository."
+            )
+            st.caption(str(exc))
+
+    else:
+        uploaded_pdf = st.file_uploader(
+            "Upload a PDF",
+            type=["pdf"],
+        )
+
+        if uploaded_pdf is not None:
+            try:
+                prepare_document(
+                    uploaded_pdf.getvalue(),
+                    uploaded_pdf.name,
+                    "User-uploaded PDF",
+                )
+            except Exception as exc:
+                st.error(f"Could not process the PDF: {exc}")
+
+    st.markdown("---")
 
     if st.button(
-        "Clear conversation",
+        "🧹 Clear conversation",
         use_container_width=True,
     ):
         st.session_state.messages = []
         st.session_state.latest_sources = []
-        st.session_state.latest_answer = ""
         st.rerun()
 
     if st.button(
-        "Reset document",
+        "↻ Reset document",
         use_container_width=True,
     ):
         clear_document_state()
@@ -767,61 +959,58 @@ with st.sidebar:
 
     st.markdown("---")
 
-    st.markdown("**Suggested questions**")
+    st.markdown("**Try asking**")
 
-    suggested = [
+    suggestions = [
         "What does the document say about cyber harassment?",
-        "What punishment is mentioned for this offence?",
-        "Which section covers this offence?",
+        "What punishment is mentioned for cyber-stalking?",
+        "Which section discusses cyber-bullying?",
         "What does the Act say about complaints?",
         "What powers does the Authority have?",
     ]
 
-    for index, question in enumerate(suggested):
+    for index, suggestion in enumerate(suggestions):
         if st.button(
-            question,
+            suggestion,
+            key=f"suggestion_{index}",
             use_container_width=True,
-            key=f"suggested_{index}",
         ):
-            st.session_state.pending_question = question
+            st.session_state.pending_question = suggestion
             st.rerun()
 
     st.markdown("---")
 
     st.markdown(
-        '<div class="side-muted">'
+        '<div class="side-text">'
         "<b>Legal notice</b><br>"
-        "This tool summarizes information from the uploaded document. "
-        "It is not a substitute for professional legal advice."
+        "This application is an informational tool grounded in the "
+        "uploaded document. It is not professional legal advice."
         "</div>",
         unsafe_allow_html=True,
     )
 
 
 # ============================================================
-# MAIN HERO
+# HERO
 # ============================================================
 
 st.markdown(
     """
-    <div class="brand-row">
-        <div class="brand-mark">⚖</div>
-        <div>
-            <div class="eyebrow">Document-grounded AI</div>
-        </div>
-    </div>
+    <div class="eyebrow">Document-grounded AI · RAG</div>
 
-    <div class="hero-title">PECA Legal Information Assistant</div>
+    <div class="hero-title">
+        🇵🇰 PECA Legal Information Assistant
+    </div>
 
     <div class="hero-subtitle">
         Ask questions about Pakistan's Prevention of Electronic Crimes Act,
-        2016. The assistant retrieves relevant passages from your document
-        before generating an answer.
+        2016. The assistant retrieves relevant passages from the source
+        document before generating an answer.
     </div>
 
-    <div class="status-pill">
-        <span class="status-dot"></span>
-        Strict document-grounded mode
+    <div class="pill">
+        <span class="dot"></span>
+        Grounded answers with visible source evidence
     </div>
     """,
     unsafe_allow_html=True,
@@ -831,179 +1020,113 @@ st.write("")
 
 
 # ============================================================
-# EMPTY STATE
+# EMPTY / LOAD STATE
 # ============================================================
 
-if uploaded_pdf is None:
-    st.markdown(
-        """
-        <div class="panel" style="padding:24px;">
-            <div class="section-title">Start with the official document</div>
-            <div class="section-caption">
-                Upload the PECA PDF from the left sidebar to create your
-                searchable document index.
-            </div>
-            <div class="grounded-note">
-                <b>How it works:</b>
-                PDF → text extraction → smart chunks → embeddings →
-                semantic retrieval → Groq LLM → cited answer.
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+if "chunks" not in st.session_state:
+    st.info(
+        "The PECA document is being prepared. If it does not load, "
+        "use the upload option in the sidebar."
     )
-
-    st.markdown("")
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        st.markdown(
-            """
-            <div class="panel stat-card">
-                <div class="stat-label">Step 01</div>
-                <div class="stat-value">Upload</div>
-                <div class="stat-sub">Add the official PECA PDF</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    with col2:
-        st.markdown(
-            """
-            <div class="panel stat-card">
-                <div class="stat-label">Step 02</div>
-                <div class="stat-value">Retrieve</div>
-                <div class="stat-sub">Find relevant provisions</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    with col3:
-        st.markdown(
-            """
-            <div class="panel stat-card">
-                <div class="stat-label">Step 03</div>
-                <div class="stat-value">Explain</div>
-                <div class="stat-sub">Generate a grounded answer</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    st.markdown(
-        '<div class="footer">PECA Legal Information Assistant · RAG MVP</div>',
-        unsafe_allow_html=True,
-    )
-
     st.stop()
 
 
 # ============================================================
-# PROCESS DOCUMENT
-# ============================================================
-
-try:
-    index_document(uploaded_pdf)
-except Exception as exc:
-    st.error(f"Document processing failed: {exc}")
-    st.stop()
-
-
-# ============================================================
-# DOCUMENT STATS
+# STATS
 # ============================================================
 
 pages = st.session_state["pages"]
 chunks = st.session_state["chunks"]
 
-col1, col2, col3, col4 = st.columns(4)
+c1, c2, c3, c4 = st.columns(4)
 
-with col1:
+with c1:
     st.markdown(
         f"""
-        <div class="panel stat-card">
-            <div class="stat-label">Document</div>
-            <div class="stat-value" style="font-size:1.05rem;">
-                {st.session_state["document_name"][:24]}
-            </div>
-            <div class="stat-sub">Uploaded PDF</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-with col2:
-    st.markdown(
-        f"""
-        <div class="panel stat-card">
+        <div class="panel stat">
             <div class="stat-label">Pages</div>
             <div class="stat-value">{len(pages)}</div>
-            <div class="stat-sub">Readable pages</div>
+            <div class="stat-note">Readable pages</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-with col3:
+with c2:
     st.markdown(
         f"""
-        <div class="panel stat-card">
-            <div class="stat-label">Searchable chunks</div>
+        <div class="panel stat">
+            <div class="stat-label">Indexed</div>
             <div class="stat-value">{len(chunks)}</div>
-            <div class="stat-sub">Indexed passages</div>
+            <div class="stat-note">Searchable chunks</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-with col4:
+with c3:
     st.markdown(
         f"""
-        <div class="panel stat-card">
-            <div class="stat-label">LLM</div>
-            <div class="stat-value" style="font-size:1.05rem;">
-                GPT-OSS 120B
-            </div>
-            <div class="stat-sub">via Groq</div>
+        <div class="panel stat">
+            <div class="stat-label">Embeddings</div>
+            <div class="stat-value">MiniLM-L6</div>
+            <div class="stat-note">Local semantic vectors</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
+with c4:
+    st.markdown(
+        f"""
+        <div class="panel stat">
+            <div class="stat-label">Generation</div>
+            <div class="stat-value">GPT-OSS 120B</div>
+            <div class="stat-note">via Groq</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-st.markdown("")
+st.write("")
+
 st.markdown(
-    '<div class="grounded-note">'
-    "<b>Grounding:</b> Answers are generated from retrieved passages "
-    "from the uploaded document. The source passages remain visible below."
+    '<div class="grounding">'
+    "<b>How answers are produced:</b> "
+    "Question → retrieval → relevant PECA passages → grounded prompt → "
+    "LLM response → source evidence."
     "</div>",
     unsafe_allow_html=True,
 )
 
-st.markdown("")
+st.write("")
 
 
 # ============================================================
 # DOCUMENT DETAILS
 # ============================================================
 
-with st.expander("📄 Document details", expanded=False):
-    first_page_preview = pages[0]["text"][:2200]
-
+with st.expander(
+    f"📄 {st.session_state['doc_name']}",
+    expanded=False,
+):
     st.markdown(
-        f"**File:** `{st.session_state['document_name']}`"
+        f"**Source:** {st.session_state['doc_source']}"
     )
 
-    st.markdown("**First-page preview**")
+    st.markdown("**Document preview**")
 
-    st.write(first_page_preview)
+    preview = pages[0]["text"][:3000]
+
+    st.write(preview)
+
+    st.markdown(
+        f'[Open source PDF in GitHub]({PDF_BLOB_URL})'
+    )
 
 
 # ============================================================
-# CHAT
+# CHAT HISTORY
 # ============================================================
 
 if "messages" not in st.session_state:
@@ -1012,21 +1135,21 @@ if "messages" not in st.session_state:
 if "latest_sources" not in st.session_state:
     st.session_state.latest_sources = []
 
-if "latest_answer" not in st.session_state:
-    st.session_state.latest_answer = ""
-
-if "pending_question" not in st.session_state:
-    st.session_state.pending_question = None
-
-
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
 
-pending_question = st.session_state.get("pending_question")
+# ============================================================
+# CHAT INPUT
+# ============================================================
+
+pending_question = st.session_state.get(
+    "pending_question"
+)
+
 typed_question = st.chat_input(
-    "Ask about the PECA document..."
+    "Ask a question about the PECA document..."
 )
 
 question = typed_question or pending_question
@@ -1034,19 +1157,23 @@ question = typed_question or pending_question
 if question:
     st.session_state.pending_question = None
 
-    st.session_state.messages.append({
-        "role": "user",
-        "content": question,
-    })
+    st.session_state.messages.append(
+        {
+            "role": "user",
+            "content": question,
+        }
+    )
 
     with st.chat_message("user"):
         st.markdown(question)
 
+    sources = []
+
     try:
         with st.chat_message("assistant"):
 
-            with st.spinner("Retrieving relevant provisions..."):
-                sources = retrieve(
+            with st.spinner("Searching the PECA document..."):
+                sources = retrieve_chunks(
                     question,
                     st.session_state["chunks"],
                     st.session_state["embeddings"],
@@ -1054,30 +1181,21 @@ if question:
                 )
 
             if not sources:
-                raise RuntimeError(
-                    "No relevant document passages were retrieved."
-                )
-
-            best_score = sources[0]["score"]
-
-            if best_score < MIN_RELEVANCE:
                 answer = (
                     "I couldn't find enough relevant information in the "
                     "uploaded document to answer that reliably."
                 )
             else:
-                with st.spinner("Generating grounded answer..."):
-                    answer = answer_question(
+                with st.spinner("Generating a grounded answer..."):
+                    answer = generate_answer(
                         question,
                         sources,
                         st.session_state.messages[:-1],
-                        API_KEY,
                     )
 
             st.markdown(answer)
 
-            st.session_state.latest_sources = sources
-            st.session_state.latest_answer = answer
+        st.session_state.latest_sources = sources
 
     except Exception as exc:
         answer = (
@@ -1090,52 +1208,62 @@ if question:
         with st.chat_message("assistant"):
             st.error(answer)
 
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": answer,
-    })
+    st.session_state.messages.append(
+        {
+            "role": "assistant",
+            "content": answer,
+        }
+    )
 
 
 # ============================================================
 # SOURCES
 # ============================================================
 
-if st.session_state.get("latest_sources"):
+latest_sources = st.session_state.get(
+    "latest_sources",
+    [],
+)
+
+if latest_sources:
     st.markdown("---")
 
     st.markdown(
-        '<div class="section-title">📚 Sources used for the latest answer</div>',
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        '<div class="section-caption">'
-        "Inspect the retrieved passages that were provided to the LLM."
+        '<div class="section-title">'
+        "📚 Evidence used for the latest answer"
         "</div>",
         unsafe_allow_html=True,
     )
 
-    for source in st.session_state["latest_sources"]:
-        source_title = (
+    st.caption(
+        "These passages were retrieved from the PECA document and "
+        "provided to the language model."
+    )
+
+    for source in latest_sources:
+        label = (
             f"Page {source['page']} · "
             f"{source['section']} · "
-            f"Relevance {source['score']:.3f}"
+            f"retrieval {source['score']:.3f}"
         )
 
-        with st.expander(source_title):
+        with st.expander(label):
             st.markdown(
                 f"""
-                <div class="source-meta">
-                    <strong>Page:</strong> {source["page"]}
-                    &nbsp; · &nbsp;
-                    <strong>Section:</strong> {source["section"]}
-                    <span class="relevance">
-                        {source["score"]:.3f}
-                    </span>
-                </div>
+                <div class="source-card">
+                    <div class="source-meta">
+                        <strong>Page:</strong> {source["page"]}
+                        &nbsp; · &nbsp;
+                        <strong>Section:</strong> {source["section"]}
+                        <br>
+                        Semantic: {source["semantic_score"]:.3f}
+                        &nbsp; · &nbsp;
+                        Lexical: {source["lexical_score"]:.3f}
+                    </div>
 
-                <div class="source-text">
-                    {source["text"]}
+                    <div class="source-text">
+                        {source["text"]}
+                    </div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -1143,18 +1271,18 @@ if st.session_state.get("latest_sources"):
 
 
 # ============================================================
-# DOWNLOAD LAST ANSWER
+# LEGAL NOTE
 # ============================================================
 
-if st.session_state.get("latest_answer"):
-    st.markdown("")
-
-    st.download_button(
-        "⬇️ Download latest answer",
-        data=st.session_state["latest_answer"],
-        file_name="peca_answer.txt",
-        mime="text/plain",
-    )
+st.markdown("")
+st.markdown(
+    '<div class="legal-note">'
+    "<b>Important:</b> This tool summarizes and explains information "
+    "contained in the selected document. It does not replace advice "
+    "from a qualified legal professional."
+    "</div>",
+    unsafe_allow_html=True,
+)
 
 
 # ============================================================
@@ -1164,8 +1292,8 @@ if st.session_state.get("latest_answer"):
 st.markdown(
     """
     <div class="footer">
-        PECA Legal Information Assistant · Retrieval-Augmented Generation MVP<br>
-        Information grounded in the uploaded document · Not legal advice
+        PECA Legal Information Assistant · RAG MVP<br>
+        Document-grounded retrieval · Source evidence visible to the user
     </div>
     """,
     unsafe_allow_html=True,
