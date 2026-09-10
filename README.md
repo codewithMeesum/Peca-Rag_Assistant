@@ -379,7 +379,7 @@ Possible next steps:
 
 ## 👨‍💻 Author
 
-### Meesum Mukhtar
+### Mesum Mukhtar
 
 Building practical AI systems with **Generative AI, RAG, Machine Learning, and emerging technologies.**
 
