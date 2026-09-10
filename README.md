@@ -1,71 +1,233 @@
 🇵🇰 PECA Legal Assistant
 
-A multilingual, document-grounded RAG assistant for the Prevention of Electronic Crimes Act, 2016.
-
-<p align="center">
+A multilingual, document-grounded Retrieval-Augmented Generation (RAG) assistant for Pakistan's Prevention of Electronic Crimes Act, 2016.
 
 
 
 
 
 
-</p>
+🚀 Live Demo
 
-🚀 Try It Live
+Open PECA Legal Assistant
 
-👉 Open PECA Legal Assistant
+The default PECA document is loaded automatically, so visitors do not need to download or upload the PDF before using the app.
 
-No PDF upload is required for the default experience.
+🧠 About the Project
 
-The app automatically loads the project's PECA source document, indexes it, and lets visitors ask questions immediately.
+PECA Legal Assistant is a focused RAG application built around Pakistan's Prevention of Electronic Crimes Act, 2016 (PECA).
 
-What Is This?
+Instead of relying only on an LLM's general knowledge, the application:
 
-PECA Legal Assistant is a focused Retrieval-Augmented Generation (RAG) application built around Pakistan's Prevention of Electronic Crimes Act, 2016.
+Extracts text from the selected PDF.
 
-Instead of asking an LLM to answer purely from its general knowledge, the system first retrieves relevant passages from the selected document and then generates an answer grounded in those passages.
+Splits the document into searchable chunks.
 
-Core idea
+Creates embeddings for those chunks.
+
+Retrieves relevant passages for the user's question.
+
+Sends the retrieved evidence to the LLM.
+
+Generates a grounded answer with source information.
+
+Core idea:
 
 Retrieve → Ground → Explain → Verify
 
-✨ What You Can Do
+✨ Features
 
-💬 Ask Questions
+ChatGPT-inspired minimal chat interface
 
-Ask natural-language questions such as:
+Automatic PECA document loading
 
-What does the Act say about cyber harassment?
+Optional custom PDF upload
 
-What punishment is mentioned for cyber-stalking?
+English, Urdu, and Roman Urdu answers
 
-Which section discusses cyber-bullying?
+Simple and Detailed answer styles
 
-What does the Act say about complaints?
+Multi-turn conversation
 
-What powers does the Authority have?
+Suggested questions
 
-🌍 Choose Your Language
+Page-aware PDF extraction
 
-The assistant can explain answers in:
+Section-aware metadata
 
-🇬🇧 English
+Overlapping document chunks
 
-🇵🇰 Urdu
+Sentence-Transformer embeddings
 
-🇵🇰 Roman Urdu
+Hybrid semantic + lexical retrieval
 
-The original document remains the source evidence.
+Section-number matching
 
-📝 Choose Answer Style
+Page-diverse retrieval
 
-Simple — easy-to-understand explanation
+Grounded Groq generation
 
-Detailed — more complete explanation
+Structured answer guidance
 
-📚 Inspect the Evidence
+[Source 1], [Source 2] style citations
 
-Each answer can expose:
+Expandable retrieved evidence
+
+Legal-information disclaimer
+
+🌍 Supported Languages
+
+The assistant can explain retrieved information in:
+
+English
+
+Urdu
+
+Roman Urdu
+
+The original document remains the source evidence. The selected language controls the explanation.
+
+📚 Structured Answers
+
+The assistant adapts the response structure to the type of question.
+
+Example: practical question
+
+Summary
+
+Practical Steps
+1. ...
+2. ...
+3. ...
+
+Important Note
+
+Sources
+[Source 1]
+[Source 2]
+
+Example: offence or punishment question
+
+Summary
+
+Relevant Provision
+...
+
+Consequence / Punishment
+...
+
+Sources
+[Source 1]
+
+The application is designed to avoid inventing legal sections, penalties, or citations that are not supported by the retrieved document.
+
+⚡ RAG Pipeline
+
+PECA PDF / Uploaded PDF
+          |
+          v
+   Text Extraction
+          |
+          v
+ Page + Section Aware
+       Chunking
+          |
+          v
+      Embeddings
+          |
+          v
+   Hybrid Retrieval
+    /      |       \
+   /       |        \
+Semantic  Keyword  Section
+Search     Match   Matching
+    \       |       /
+     \      |      /
+      +-----+-----+
+            |
+            v
+ Relevant Source Passages
+            |
+            v
+     Grounded Prompt
+            |
+            v
+        Groq LLM
+            |
+            v
+ Answer in Selected Language
+            |
+            v
+      Source Evidence
+
+🔎 Why RAG?
+
+A normal LLM can generate an answer from patterns learned during training.
+
+A RAG system adds a retrieval step:
+
+User Question
+      |
+      v
+Search the document
+      |
+      v
+Retrieve relevant evidence
+      |
+      v
+Give evidence to the LLM
+      |
+      v
+Generate grounded answer
+
+This is useful when the selected document should control the answer.
+
+📄 Default PECA Source
+
+The default source document is the project's PECA PDF hosted on GitHub.
+
+Prevention of Electronic Crimes Act, 2016
+
+Open / Download PECA PDF
+
+The application downloads the source document automatically when the default PECA mode is used.
+
+📤 Custom PDF Mode
+
+The application can also work with another text-based PDF.
+
+Choose Upload PDF, then the app:
+
+New PDF
+   |
+   v
+Extract text
+   |
+   v
+Create chunks
+   |
+   v
+Create embeddings
+   |
+   v
+Search uploaded document
+   |
+   v
+Generate answer from uploaded document
+
+When the source document changes, the conversation is reset so that context from the previous document is not carried into the new one.
+
+Best results
+
+Use a text-based PDF with selectable text.
+
+Scanned or image-only PDFs may require OCR support.
+
+🔎 Source Evidence
+
+Retrieved evidence can be expanded to inspect the material used for the answer.
+
+Each source can include:
 
 Source number
 
@@ -77,176 +239,84 @@ Retrieval score
 
 Original retrieved passage
 
-This lets you inspect the evidence behind the generated response.
+This makes the response easier to verify against the source document.
 
-⚡ How the RAG Pipeline Works
-
-                 📄 PECA PDF
-                      │
-                      ▼
-              Text Extraction
-                      │
-                      ▼
-            Page-Aware Chunking
-                      │
-                      ▼
-                Embeddings
-                      │
-                      ▼
-             Hybrid Retrieval
-              ┌───────┴───────┐
-              │               │
-       Semantic Search   Keyword Match
-              │               │
-              └───────┬───────┘
-                      ▼
-             Relevant Passages
-                      │
-                      ▼
-               Grounded Prompt
-                      │
-                      ▼
-                  Groq LLM
-                      │
-                      ▼
-             Answer + Sources
-
-🔍 Why RAG?
-
-A standard LLM can generate an answer from patterns learned during training.
-
-A RAG system adds a retrieval layer:
-
-User Question
-      ↓
-Search the document
-      ↓
-Retrieve relevant evidence
-      ↓
-Give evidence to the LLM
-      ↓
-Generate grounded answer
-
-This is especially useful for document-specific questions where the source document should control the answer.
-
-🛡️ Grounding & Accuracy
+🛡️ Grounding and Accuracy
 
 The assistant is instructed to:
 
-Use the retrieved document passages as the source of truth
+Use retrieved document passages as the source of truth.
 
-Avoid inventing sections or penalties
+Avoid unsupported legal claims.
 
-Avoid fabricated citations
+Avoid fabricated citations.
 
-State when the document does not contain enough relevant information
+State when enough relevant information cannot be found.
 
-Preserve the meaning of the source while explaining it simply
+Preserve the meaning of the source while explaining it clearly.
 
-Important
+This improves reliability, but no AI system is infallible.
 
-This improves reliability, but no AI system should be treated as infallible.
-
-For legal decisions, always inspect the cited source document and consult a qualified legal professional where appropriate.
-
-📄 Built-In PECA Source
-
-The default experience uses the project's PECA PDF hosted on GitHub.
-
-Source document
-
-Prevention of Electronic Crimes Act, 2016
-
-📥 Open / Download PECA PDF
-
-Visitors do not need to download it manually to use the default app.
-
-📤 Upload Another PDF
-
-The application also supports a custom document workflow.
-
-Choose:
-
-Upload PDF
-
-Then the app rebuilds the retrieval index for the uploaded document.
-
-New PDF
-   ↓
-Extract text
-   ↓
-Create chunks
-   ↓
-Create embeddings
-   ↓
-Retrieve relevant passages
-   ↓
-Generate answer
-
-The conversation resets when the source document changes, preventing the previous document's chat context from being carried into the new document.
-
-Best results
-
-Use a text-based PDF with selectable text.
-
-Scanned/image-only PDFs may require OCR.
+For legal decisions, verify the cited source document and consult a qualified legal professional where appropriate.
 
 🛠️ Tech Stack
 
 Technology
 
-Role
+Purpose
 
-🐍 Python
+Python
 
 Application logic
 
-🎈 Streamlit
+Streamlit
 
-Web application + UI
+Web application and UI
 
-📄 PyPDF
+PyPDF
 
 PDF text extraction
 
-🧠 Sentence Transformers
+Sentence Transformers
 
 Text embeddings
 
-🔢 NumPy
+NumPy
 
-Vector similarity retrieval
+Similarity retrieval
 
-⚡ Groq API
+Groq API
 
 LLM inference
 
-🤖 GPT-OSS 120B
+GPT-OSS 120B
 
 Answer generation
 
-☁️ Streamlit Community Cloud
-
-Deployment
-
-🐙 GitHub
+GitHub
 
 Source control
+
+Streamlit Community Cloud
+
+Deployment
 
 📁 Project Structure
 
 peca-rag-assistant/
-│
-├── app.py
-├── requirements.txt
-├── README.md
-├── .gitignore
-└── .streamlit/
-    └── config.toml
+|
+|-- app.py
+|-- requirements.txt
+|-- README.md
+|-- .gitignore
+`-- .streamlit/
+    `-- config.toml
 
 ▶️ Run Locally
 
-1. Clone
+1. Clone the repository
+
+Replace YOUR_USERNAME with your GitHub username if your repository name is different.
 
 git clone https://github.com/YOUR_USERNAME/peca-rag-assistant.git
 cd peca-rag-assistant
@@ -257,7 +327,7 @@ pip install -r requirements.txt
 
 3. Add your Groq API key
 
-Create:
+Create this file:
 
 .streamlit/secrets.toml
 
@@ -265,55 +335,58 @@ Add:
 
 GROQ_API_KEY = "your_groq_api_key"
 
-4. Start the app
+4. Start the application
 
 streamlit run app.py
 
 ☁️ Deploy on Streamlit Community Cloud
 
-Push the repository to GitHub.
+Push the project to GitHub.
 
-Create a new Streamlit app.
+Open Streamlit Community Cloud.
 
-Select app.py.
+Create a new app from your repository.
 
-Add your secret:
+Set app.py as the main file.
+
+Open Settings → Secrets.
+
+Add:
 
 GROQ_API_KEY = "your_groq_api_key"
 
-Deploy.
+Deploy the application.
 
-🔐 Never commit your real API key
+🔐 Security
 
-Do not put your actual Groq key inside app.py or commit it to GitHub.
+Never commit your real Groq API key to GitHub.
 
-🧪 Test the Application
+Do not place the API key directly inside app.py.
 
-A useful RAG evaluation set should contain both supported and unsupported questions.
+🧪 Testing the RAG System
 
-✅ Supported
+Test both supported and unsupported questions.
+
+Supported examples
 
 What is cyber harassment?
-
 Which section discusses this offence?
-
 What punishment does the document mention?
-
 What does the Act say about complaints?
 
-⚠️ Unsupported / out-of-document
+Unsupported example
 
-Ask about a topic that is not present in the selected PDF.
+Ask about a topic that is not covered by the selected document.
 
-Expected behavior:
+The expected behavior is:
 
-“I couldn't find enough relevant information in the selected document to answer that reliably.”
+I couldn't find enough relevant information in the selected document to answer that reliably.
 
-That test is important because a good RAG system should refuse to invent an answer when evidence is missing.
+This is an important RAG behavior because the system should not invent an answer when relevant evidence is unavailable.
 
 🎯 Project Goal
 
-The goal is to demonstrate how a practical RAG system can make a difficult official document easier to search and understand.
+The project demonstrates how RAG can make a difficult official document easier to search and understand.
 
 Instead of:
 
@@ -323,11 +396,11 @@ The user can:
 
 Ask → Retrieve → Understand → Verify
 
-🧩 Key RAG Concepts Demonstrated
+🧩 RAG Concepts Demonstrated
 
 Chunking
 
-Large documents are split into smaller searchable passages.
+Large documents are divided into smaller searchable passages.
 
 Embeddings
 
@@ -335,15 +408,15 @@ Text is represented as numerical vectors for semantic comparison.
 
 Retrieval
 
-Relevant document passages are selected for the user's question.
+Relevant passages are selected from the document for the user's question.
 
 Grounded Generation
 
-The LLM receives retrieved evidence before generating the answer.
+The LLM receives retrieved evidence before generating the response.
 
 Source Transparency
 
-Retrieved passages remain visible so users can inspect the evidence.
+Retrieved passages remain inspectable so users can verify the evidence.
 
 ⚖️ Legal Disclaimer
 
@@ -353,23 +426,21 @@ It is not a lawyer, does not provide professional legal advice, and should not r
 
 🔮 Future Improvements
 
-Possible next steps:
+Stronger reranking
 
-🔎 Stronger reranking
+Exact subsection citations
 
-📌 Exact subsection citations
+Direct source-page navigation
 
-🔗 Direct source-page navigation
+OCR for scanned PDFs
 
-🧾 OCR for scanned documents
+Persistent vector storage
 
-💾 Persistent vector storage
+Multiple official legal documents
 
-📚 Multiple official legal documents
+Automated RAG evaluation
 
-📊 Automated RAG evaluation
-
-🌐 Improved Urdu/Roman Urdu retrieval
+Improved Urdu and Roman Urdu retrieval
 
 👨‍💻 Author
 
@@ -377,18 +448,16 @@ Mesum Mukhtar
 
 Building practical AI systems with Generative AI, RAG, Machine Learning, and emerging technologies.
 
-🔗 Project Links
+Project Links
 
-🚀 Live App
+🚀 Live App:
 https://peca-rag-assistant.streamlit.app/
 
-📄 PECA Source PDF
+📄 PECA Source PDF:
 https://github.com/codewithMeesum/Peca-Rag_Assistant/blob/main/PECA%202026.pdf
 
-⭐ Support the Project
+⭐ Support
 
-If you found this project useful, consider giving the repository a ⭐ Star.
+If you find the project useful, consider giving the repository a ⭐ Star.
 
-<p align="center">
-  <b>Built with 🐍 Python · 🧠 RAG · ⚡ Groq · 🎈 Streamlit</b>
-</p>
+Built with Python · RAG · Groq · Streamlit
