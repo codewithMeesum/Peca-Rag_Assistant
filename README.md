@@ -444,7 +444,7 @@ Improved Urdu and Roman Urdu retrieval
 
 👨‍💻 Author
 
-Mesum Mukhtar
+Meesum Mukhtar
 
 Building practical AI systems with Generative AI, RAG, Machine Learning, and emerging technologies.
 
