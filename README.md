@@ -357,7 +357,7 @@ A conversational RAG assistant that searches the official PECA document and expl
 
 ## 👨‍💻 Author
 
-**Meesum Mukhtar**
+**Mesum Mukhtar**
 
 Built as an educational and practical RAG MVP for document-grounded AI.
 
